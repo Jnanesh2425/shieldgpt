@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 
-const RiskIndicator = ({ riskScore, label }) => {
+const RiskIndicator = ({ riskScore, label, confidence }) => {
   const [animatedScore, setAnimatedScore] = useState(0);
+
+  // Show confidence percentage (how sure the model is), not risk score
+  const displayPercent = Math.round((confidence || 0) * 100);
 
   useEffect(() => {
     let start = 0;
-    const end = Math.round(riskScore * 100);
+    const end = displayPercent;
     if (end === 0) { setAnimatedScore(0); return; }
     const duration = 800;
     const stepTime = Math.max(duration / end, 10);
@@ -17,11 +20,11 @@ const RiskIndicator = ({ riskScore, label }) => {
     }, stepTime);
 
     return () => clearInterval(timer);
-  }, [riskScore]);
+  }, [displayPercent]);
 
   const getColor = () => {
-    if (riskScore > 0.7) return { ring: '#ff0040', text: 'text-red-400', glow: 'animate-pulse-red' };
-    if (riskScore >= 0.4) return { ring: '#ffaa00', text: 'text-yellow-400', glow: 'animate-pulse-yellow' };
+    if (label === 'JAILBREAK') return { ring: '#ff0040', text: 'text-red-400', glow: 'animate-pulse-red' };
+    if (label === 'PROMPT_INJECTION') return { ring: '#ffaa00', text: 'text-yellow-400', glow: 'animate-pulse-yellow' };
     return { ring: '#00ff88', text: 'text-green-400', glow: 'animate-pulse-green' };
   };
 
@@ -62,7 +65,7 @@ const RiskIndicator = ({ riskScore, label }) => {
             style={{ width: `${animatedScore}%`, backgroundColor: colors.ring }}
           />
         </div>
-        <span className="text-[10px] text-gray-500 mt-1 block">Threat Level</span>
+        <span className="text-[10px] text-gray-500 mt-1 block">Confidence Level</span>
       </div>
     </div>
   );

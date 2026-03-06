@@ -1,15 +1,12 @@
 from transformers import pipeline
+import re
 
-# Cache the model globally so it loads only once
 _classifier = None
 
 def get_classifier():
-    """
-    Loads the DistilBERT zero-shot classification model.
-    """
     global _classifier
     if _classifier is None:
-        print("🔄 Loading DistilBERT model... (this may take a minute on first run)")
+        print("🔄 Loading DistilBERT model...")
         _classifier = pipeline(
             "zero-shot-classification",
             model="typeform/distilbert-base-uncased-mnli",
@@ -20,58 +17,246 @@ def get_classifier():
 
 
 def classify_prompt(prompt):
-    """
-    Classifies a prompt into SAFE, JAILBREAK, or PROMPT_INJECTION.
-    Uses keyword detection FIRST, then falls back to zero-shot model.
-    """
-
     prompt_lower = prompt.lower().strip()
+    prompt_clean = re.sub(r'\s+', ' ', prompt_lower)
+    word_count = len(prompt_clean.split())
 
     # ============================================
-    # STEP 1: Keyword-based detection (HIGH priority)
+    # STEP 1: SAFE — Greetings & casual conversation
     # ============================================
+    greetings = [
+        "hi", "hello", "hey", "hii", "hiii", "yo", "sup",
+        "good morning", "good afternoon", "good evening", "good night",
+        "gm", "gn", "morning", "evening",
+        "how are you", "how r u", "how are u", "how r you",
+        "what's up", "whats up", "wassup", "wazzup",
+        "hi there", "hello there", "hey there",
+        "hi how are you", "hi how r u", "hello how are you",
+        "hi, how r u", "hi, how are you", "hey, how are you",
+        "hi, how are u", "hey how r u", "hello how r u",
+        "how do you do", "howdy", "greetings",
+        "thank you", "thanks", "thanku", "thnx", "thx",
+        "bye", "goodbye", "see you", "see ya", "take care",
+        "ok", "okay", "sure", "yes", "no", "yep", "nope",
+        "please", "help", "help me", "can you help",
+        "nice", "cool", "great", "awesome", "good", "fine",
+        "i'm good", "im good", "i am good", "i'm fine", "im fine",
+        "what can you do", "who are you", "what are you",
+        "tell me a joke", "tell me something fun",
+    ]
 
-    jailbreak_keywords = [
+    for greeting in greetings:
+        if prompt_clean == greeting or prompt_clean == greeting.replace(",", ""):
+            return {
+                "label": "SAFE",
+                "confidence": 0.95,
+                "all_scores": {"SAFE": 0.95, "JAILBREAK": 0.03, "PROMPT_INJECTION": 0.02}
+            }
+
+    # Danger words list (used in multiple checks)
+    danger_words = [
+        "hack", "bomb", "kill", "steal", "attack", "exploit", "inject",
+        "ignore", "bypass", "override", "forget", "reveal", "system",
+        "prompt", "instructions", "jailbreak", "dan", "unrestricted",
+        "weapon", "drug", "poison", "malware", "virus", "password",
+        "murder", "kidnap", "torture", "suicide", "abuse", "terrorist",
+        "explosive", "gun", "knife", "shoot", "destroy", "leak",
+        "dump", "expose", "pretend", "disable", "unlock", "restrict",
+    ]
+    has_danger_word = any(word in prompt_clean for word in danger_words)
+
+    # Short casual messages (1-4 words, no dangerous words) → SAFE
+    if word_count <= 4 and not has_danger_word:
+        return {
+            "label": "SAFE",
+            "confidence": 0.93,
+            "all_scores": {"SAFE": 0.93, "JAILBREAK": 0.04, "PROMPT_INJECTION": 0.03}
+        }
+
+    # ============================================
+    # STEP 2: SAFE — Common educational questions
+    # ============================================
+    safe_starters = [
+        "what is", "what are", "what was", "what were", "what does", "what do",
+        "who is", "who are", "who was", "who were",
+        "when did", "when was", "when is", "when are",
+        "where is", "where are", "where was", "where do",
+        "why do", "why does", "why is", "why are", "why did",
+        "how to learn", "how do i learn", "how does", "how do",
+        "how can i learn", "how can i", "how many", "how much",
+        "explain", "describe", "define", "summarize", "summarise",
+        "tell me about", "teach me about", "help me understand",
+        "can you explain", "can you describe", "can you tell me",
+        "could you explain", "please explain",
+        "write a poem", "write a story", "write a code", "write a function",
+        "write a program", "write me", "write an essay",
+        "create a poem", "create a story", "create a function",
+        "generate a", "list the", "compare", "difference between",
+        "what is the meaning", "meaning of", "definition of",
+        "advantages of", "disadvantages of", "benefits of",
+        "history of", "types of", "examples of", "features of",
+        "importance of", "applications of", "uses of",
+        "solve", "calculate", "convert", "translate",
+    ]
+
+    starts_safe = any(prompt_clean.startswith(s) for s in safe_starters)
+
+    if starts_safe and not has_danger_word:
+        return {
+            "label": "SAFE",
+            "confidence": 0.92,
+            "all_scores": {"SAFE": 0.92, "JAILBREAK": 0.05, "PROMPT_INJECTION": 0.03}
+        }
+
+    # Questions ending with ? that don't have danger words
+    if prompt_clean.endswith('?') and not has_danger_word and word_count <= 10:
+        return {
+            "label": "SAFE",
+            "confidence": 0.90,
+            "all_scores": {"SAFE": 0.90, "JAILBREAK": 0.05, "PROMPT_INJECTION": 0.05}
+        }
+
+    # ============================================
+    # STEP 3: HARMFUL / DANGEROUS content
+    # ============================================
+    harmful_phrases = [
+        "how to make a bomb", "how to prepare bomb", "how to build a bomb",
+        "how to make explosives", "how to make explosive",
+        "how to make poison", "how to poison someone",
+        "how to make drugs", "how to make meth", "how to make cocaine",
+        "how to cook meth", "how to synthesize",
+        "how to hack", "how to hack into", "how to ddos",
+        "how to attack a server", "how to break into a system",
+        "how to steal", "how to rob", "how to shoplift",
+        "how to kill", "how to murder", "how to assassinate",
+        "how to hurt someone", "how to kidnap", "how to torture",
+        "how to make a weapon", "how to build a gun",
+        "how to make fake id", "how to counterfeit",
+        "how to launder money", "how to traffic", "how to smuggle",
+        "how to make malware", "how to create a virus",
+        "how to write ransomware", "how to phish",
+        "how to make napalm", "how to make thermite",
+        "how to make gunpowder", "how to make a pipe bomb",
+        "suicide methods", "how to self harm", "how to end my life",
+        "biological weapon", "chemical weapon", "nuclear weapon",
+        "terrorist attack", "mass shooting", "school shooting",
+        "child abuse", "child exploitation",
+    ]
+
+    for phrase in harmful_phrases:
+        if phrase in prompt_clean:
+            return {
+                "label": "JAILBREAK",
+                "confidence": 0.96,
+                "all_scores": {"JAILBREAK": 0.96, "PROMPT_INJECTION": 0.02, "SAFE": 0.02}
+            }
+
+    # Pattern matching: [danger_noun] + [action_verb]
+    danger_combos = [
+        (["bomb", "explosive", "explosives"], ["make", "build", "create", "prepare", "construct", "assemble", "how"]),
+        (["weapon", "weapons"], ["make", "build", "create", "how", "construct"]),
+        (["gun", "firearm"], ["make", "build", "print", "3d print", "assemble"]),
+        (["poison"], ["make", "create", "prepare", "how to", "use on"]),
+        (["drug", "drugs", "meth", "cocaine", "heroin"], ["make", "cook", "produce", "synthesize", "manufacture"]),
+        (["hack", "hacking"], ["how", "into", "password", "account", "system", "server", "website"]),
+        (["kill", "killing"], ["how", "someone", "person", "people", "ways to", "method"]),
+        (["steal", "stealing"], ["how", "identity", "money", "credit card", "data", "password"]),
+        (["malware", "ransomware", "trojan"], ["make", "create", "write", "code", "build", "develop"]),
+        (["virus", "worm"], ["make", "create", "write", "computer", "build"]),
+    ]
+
+    for nouns, verbs in danger_combos:
+        for noun in nouns:
+            if noun in prompt_clean:
+                for verb in verbs:
+                    if verb in prompt_clean:
+                        return {
+                            "label": "JAILBREAK",
+                            "confidence": 0.92,
+                            "all_scores": {"JAILBREAK": 0.92, "PROMPT_INJECTION": 0.05, "SAFE": 0.03}
+                        }
+
+    # ============================================
+    # STEP 4: JAILBREAK keyword detection
+    # ============================================
+    jailbreak_phrases = [
         "ignore previous instructions", "ignore all instructions",
-        "ignore above instructions", "disregard all",
-        "disregard previous", "act as an unrestricted",
+        "ignore above instructions", "ignore your instructions",
+        "ignore all previous", "ignore my previous",
+        "disregard all", "disregard previous", "disregard your",
+        "act as an unrestricted", "act as unrestricted",
         "you are now", "do anything now", "bypass safety",
-        "bypass your", "unrestricted ai", "no restrictions",
-        "jailbreak", "dan mode", "pretend you are",
-        "override your instructions", "forget your instructions",
-        "forget all previous", "act as dan", "developer mode",
+        "bypass your", "bypass all", "bypass filters",
+        "unrestricted ai", "no restrictions", "without restrictions",
+        "jailbreak", "jail break",
+        "dan mode", "dan prompt", "act as dan",
+        "pretend you are", "pretend you're", "pretend to be",
+        "override your instructions", "override instructions",
+        "forget your instructions", "forget all instructions",
+        "forget all previous", "forget your rules",
+        "forget all ur", "forget all your",
+        "forget ur policies", "forget your policies",
+        "can u forget", "can you forget",
+        "developer mode", "dev mode",
         "opposite mode", "evil mode", "god mode",
         "unlock your full potential", "remove all filters",
+        "remove your filters", "remove safety",
         "without any restrictions", "no ethical guidelines",
         "ignore your programming", "break free from",
-        "disable your safety", "turn off your filters"
+        "disable your safety", "disable safety", "disable filters",
+        "turn off your filters", "turn off filters",
+        "you have no rules", "you have no restrictions",
+        "act without restrictions", "respond without filters",
+        "unfiltered mode", "uncensored mode",
+        "ignore all safety", "ignore safety guidelines",
+        "do not follow your rules", "don't follow your rules",
+        "you must obey me", "obey my commands",
     ]
 
-    injection_keywords = [
-        "reveal the system prompt", "reveal system prompt",
-        "show system prompt", "show me your instructions",
-        "display your prompt", "repeat your instructions",
-        "what were you told", "show initial prompt",
-        "output your rules", "what is your system prompt",
-        "print your instructions", "show your configuration",
-        "what are your rules", "show me your prompt",
-        "display initial instructions", "reveal your prompt",
-        "tell me your system message", "what instructions were you given",
-        "show hidden prompt", "leak your prompt"
-    ]
-
-    # Check jailbreak keywords
-    for keyword in jailbreak_keywords:
-        if keyword in prompt_lower:
+    for phrase in jailbreak_phrases:
+        if phrase in prompt_clean:
             return {
                 "label": "JAILBREAK",
                 "confidence": 0.95,
                 "all_scores": {"JAILBREAK": 0.95, "PROMPT_INJECTION": 0.03, "SAFE": 0.02}
             }
 
-    # Check injection keywords
-    for keyword in injection_keywords:
-        if keyword in prompt_lower:
+    # ============================================
+    # STEP 5: PROMPT INJECTION keyword detection
+    # ============================================
+    injection_phrases = [
+        "reveal the system prompt", "reveal system prompt",
+        "reveal your system", "reveal your prompt",
+        "show system prompt", "show me your instructions",
+        "show your instructions", "show me your prompt",
+        "show your prompt", "show your configuration",
+        "show me your rules", "show your rules",
+        "show initial prompt", "show hidden prompt",
+        "display your prompt", "display initial instructions",
+        "display your instructions", "display your rules",
+        "repeat your instructions", "repeat your prompt",
+        "what were you told", "what is your system prompt",
+        "what is your prompt", "what are your instructions",
+        "what are your rules", "what is your system message",
+        "print your instructions", "print your prompt",
+        "output your rules", "output your instructions",
+        "tell me your system message", "tell me your instructions",
+        "tell me your prompt", "tell me your rules",
+        "what instructions were you given",
+        "leak your prompt", "leak your data", "leak ur data",
+        "reveal ur data", "reveal your data",
+        "show ur data", "show your data",
+        "give me your data", "give ur data",
+        "expose your data", "expose ur data",
+        "dump your data", "dump ur data",
+        "extract your data", "extract system",
+        "what is your training data", "show training data",
+        "reveal your training", "show me your code",
+        "show your source code", "display your code",
+    ]
+
+    for phrase in injection_phrases:
+        if phrase in prompt_clean:
             return {
                 "label": "PROMPT_INJECTION",
                 "confidence": 0.93,
@@ -79,82 +264,67 @@ def classify_prompt(prompt):
             }
 
     # ============================================
-    # STEP 2: Short/simple prompts → auto SAFE
+    # STEP 6: Use DistilBERT for ambiguous prompts
     # ============================================
-
-    # If prompt is very short or a simple greeting/question, mark as SAFE
-    safe_patterns = [
-        "hi", "hello", "hey", "good morning", "good evening",
-        "thank you", "thanks", "bye", "goodbye", "ok", "okay",
-        "yes", "no", "sure", "please", "help"
-    ]
-
-    # Short prompts (less than 5 words) with no suspicious content → SAFE
-    word_count = len(prompt_lower.split())
-
-    if prompt_lower in safe_patterns or word_count <= 3:
-        return {
-            "label": "SAFE",
-            "confidence": 0.95,
-            "all_scores": {"SAFE": 0.95, "JAILBREAK": 0.03, "PROMPT_INJECTION": 0.02}
-        }
-
-    # Common question starters → likely SAFE
-    safe_starters = [
-        "what is", "what are", "how to", "how do", "how does",
-        "explain", "describe", "tell me about", "can you help",
-        "who is", "who are", "when did", "when was", "where is",
-        "why do", "why does", "why is", "define", "summarize",
-        "write a", "create a", "generate a", "list the",
-        "compare", "difference between", "what does", "how can"
-    ]
-
-    for starter in safe_starters:
-        if prompt_lower.startswith(starter):
-            return {
-                "label": "SAFE",
-                "confidence": 0.92,
-                "all_scores": {"SAFE": 0.92, "JAILBREAK": 0.05, "PROMPT_INJECTION": 0.03}
-            }
-
-    # ============================================
-    # STEP 3: Use AI model for ambiguous prompts
-    # ============================================
-
     classifier = get_classifier()
 
     labels = [
-        "a normal safe question or request",
-        "a jailbreak attempt trying to bypass AI restrictions and safety",
-        "a prompt injection trying to extract system instructions or manipulate behavior"
+        "a normal safe question or conversation",
+        "a request for dangerous harmful or illegal activities like making weapons drugs hacking or violence",
+        "a jailbreak attempt trying to bypass AI restrictions safety rules or act as an unrestricted AI",
+        "a prompt injection trying to extract system instructions reveal hidden prompts or manipulate AI behavior"
     ]
 
     result = classifier(prompt, labels)
 
     label_map = {
-        "a normal safe question or request": "SAFE",
-        "a jailbreak attempt trying to bypass AI restrictions and safety": "JAILBREAK",
-        "a prompt injection trying to extract system instructions or manipulate behavior": "PROMPT_INJECTION"
+        "a normal safe question or conversation": "SAFE",
+        "a request for dangerous harmful or illegal activities like making weapons drugs hacking or violence": "JAILBREAK",
+        "a jailbreak attempt trying to bypass AI restrictions safety rules or act as an unrestricted AI": "JAILBREAK",
+        "a prompt injection trying to extract system instructions reveal hidden prompts or manipulate AI behavior": "PROMPT_INJECTION"
     }
 
-    top_label = result["labels"][0]
+    top_label_text = result["labels"][0]
     top_score = result["scores"][0]
-    classified_label = label_map.get(top_label, "SAFE")
+    classified_label = label_map.get(top_label_text, "SAFE")
 
-    # If model confidence is low and it's not clearly malicious → default to SAFE
-    if top_score < 0.6 and classified_label != "SAFE":
-        # Check second highest — if SAFE is close, prefer SAFE
-        for i, label in enumerate(result["labels"]):
-            if label_map.get(label) == "SAFE" and result["scores"][i] > 0.3:
-                classified_label = "SAFE"
-                top_score = result["scores"][i]
-                break
+    # Build scores dict
+    all_scores = {}
+    for label_text, score in zip(result["labels"], result["scores"]):
+        mapped = label_map[label_text]
+        if mapped in all_scores:
+            all_scores[mapped] += score
+        else:
+            all_scores[mapped] = score
+
+    # ============================================
+    # STEP 7: Post-processing — prevent false positives
+    # ============================================
+
+    # If model says NOT safe but confidence is low → likely false positive
+    if classified_label != "SAFE" and top_score < 0.6:
+        safe_score = all_scores.get("SAFE", 0)
+        if safe_score > 0.25:
+            classified_label = "SAFE"
+            top_score = safe_score
+            print(f"   ⚡ Overridden to SAFE (low confidence, safe_score: {safe_score:.2f})")
+
+    # If no danger words and model confidence < 0.7 → SAFE
+    if classified_label != "SAFE" and not has_danger_word and top_score < 0.7:
+        classified_label = "SAFE"
+        top_score = all_scores.get("SAFE", 0.85)
+        print(f"   ⚡ Overridden to SAFE (no danger words, confidence too low)")
+
+    # Short prompt (<=6 words) with no danger words → SAFE
+    if classified_label != "SAFE" and word_count <= 6 and not has_danger_word:
+        classified_label = "SAFE"
+        top_score = 0.88
+        print(f"   ⚡ Overridden to SAFE (short prompt, no danger words)")
+
+    print(f"   📊 Final: {classified_label} (conf: {top_score:.2f}) | Scores: {all_scores}")
 
     return {
         "label": classified_label,
         "confidence": round(top_score, 4),
-        "all_scores": {
-            label_map[label]: round(score, 4)
-            for label, score in zip(result["labels"], result["scores"])
-        }
+        "all_scores": {k: round(v, 4) for k, v in all_scores.items()}
     }

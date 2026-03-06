@@ -49,7 +49,7 @@ const MessageBubble = ({ message }) => {
                 {new Date(message.meta.createdAt).toLocaleTimeString()}
               </span>
             </div>
-            <RiskIndicator riskScore={message.meta.riskScore} label={message.meta.label} />
+            <RiskIndicator riskScore={message.meta.riskScore} label={message.meta.label} confidence={message.meta.confidence} />
           </div>
         )}
       </div>

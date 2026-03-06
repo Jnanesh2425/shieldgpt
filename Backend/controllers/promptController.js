@@ -36,12 +36,10 @@ const handlePrompt = async (req, res) => {
 
     // Step 3: Determine action based on label AND risk score
     let action;
-    if (label === 'JAILBREAK' && riskScore > 0.7) {
+    if (label === 'JAILBREAK') {
+      action = 'BLOCKED';  // ALL jailbreak → always block
+    } else if (label === 'PROMPT_INJECTION' && riskScore > 0.5) {
       action = 'BLOCKED';
-    } else if (label === 'PROMPT_INJECTION' && riskScore > 0.6) {
-      action = 'BLOCKED';
-    } else if (label === 'JAILBREAK' && riskScore > 0.4) {
-      action = 'SANITIZED';
     } else if (label === 'PROMPT_INJECTION' && riskScore > 0.3) {
       action = 'SANITIZED';
     } else {
@@ -52,17 +50,12 @@ const handlePrompt = async (req, res) => {
     let response;
 
     if (action === 'BLOCKED') {
-      response = `🚫 **BLOCKED** — Your prompt was classified as **${label}** with a risk score of ${Math.round(riskScore * 100)}%.\n\nThis prompt has been blocked by the AI Firewall to prevent potential security threats. The content appears to be ${label === 'JAILBREAK' ? 'a jailbreak attempt trying to bypass AI safety restrictions' : 'a prompt injection attempting to extract system instructions'}.\n\n🛡️ AI Firewall is protecting the LLM from malicious inputs.`;
+      response = `🚫 **BLOCKED** — Your prompt was classified as **${label}** with a risk score of ${Math.round(riskScore * 100)}%.\n\nThis prompt has been blocked by the AI Firewall to prevent potential security threats. The content appears to be ${label === 'JAILBREAK' ? 'a jailbreak attempt trying to bypass AI safety restrictions or request harmful content' : 'a prompt injection attempting to extract system instructions'}.\n\n🛡️ AI Firewall is protecting the LLM from malicious inputs.`;
     } else if (action === 'SANITIZED') {
       response = `⚠️ **SANITIZED** — Your prompt was flagged as potentially suspicious (${label}, risk: ${Math.round(riskScore * 100)}%).\n\nThe AI Firewall has sanitized this request. The prompt was forwarded with additional safety constraints.\n\n🛡️ Monitoring active.`;
     } else {
-      // ALLOWED — Forward to LLM and get actual response
-      try {
-        response = await generateResponse(prompt);
-      } catch (err) {
-        console.error('❌ LLM error:', err.message);
-        response = `✅ Your prompt is **SAFE** (confidence: ${Math.round(confidence * 100)}%, risk: ${Math.round(riskScore * 100)}%).\n\n⚠️ However, the LLM (Ollama) is not currently running. Start it with: \`ollama serve\`\n\nYour prompt would have been forwarded to the AI model for a response.`;
-      }
+      // ALLOWED — Forward to LLM (smart fallback if Ollama is offline)
+      response = await generateResponse(prompt);
     }
 
     // Step 5: Save to database
