@@ -12,11 +12,29 @@ const ChatPage = () => {
   const [currentResult, setCurrentResult] = useState(null);
   const [isLoadingLLM, setIsLoadingLLM] = useState(false);
   const [showLLMResponse, setShowLLMResponse] = useState(false);
+  const [rateLimited, setRateLimited] = useState(false);
+  const [rateLimitCountdown, setRateLimitCountdown] = useState(0);
   const chatEndRef = useRef(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [conversations, isAnalyzing, showLLMResponse]);
+
+  // Countdown timer for rate limit
+  useEffect(() => {
+    if (!rateLimited || rateLimitCountdown <= 0) return;
+    const timer = setInterval(() => {
+      setRateLimitCountdown((prev) => {
+        if (prev <= 1) {
+          setRateLimited(false);
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [rateLimited]);
 
   const handleSend = async (prompt) => {
     // Reset states
@@ -32,14 +50,30 @@ const ChatPage = () => {
       setCurrentResult(data);
     } catch (err) {
       console.error('Error:', err);
-      setCurrentResult({
-        prompt,
-        label: 'ERROR',
-        confidence: 0,
-        riskScore: 0,
-        action: 'BLOCKED',
-        response: 'An error occurred while analyzing the prompt.',
-      });
+
+      // Handle rate limit (429)
+      if (err.response && err.response.status === 429) {
+        const rateLimitData = err.response.data;
+        setRateLimited(true);
+        setRateLimitCountdown(rateLimitData.remainingSeconds || 900);
+        setCurrentResult({
+          prompt,
+          label: 'RATE_LIMITED',
+          confidence: 1,
+          riskScore: 1,
+          action: 'BLOCKED',
+          response: `🔒 **Access Temporarily Suspended**\n\nYour IP has been blocked for **${rateLimitData.remainingMinutes} minute(s)** due to repeated malicious activity.\n\n**Violations:** ${rateLimitData.totalViolations}\n**Times Blocked:** ${rateLimitData.totalBlocks}\n\nPlease wait and try again with safe prompts.`,
+        });
+      } else {
+        setCurrentResult({
+          prompt,
+          label: 'ERROR',
+          confidence: 0,
+          riskScore: 0,
+          action: 'BLOCKED',
+          response: 'An error occurred while analyzing the prompt.',
+        });
+      }
     }
   };
 
@@ -230,7 +264,22 @@ const ChatPage = () => {
       {/* Input Area */}
       <div className="border-t border-gray-800 bg-gray-950/90 backdrop-blur-xl">
         <div className="max-w-3xl mx-auto px-4 py-4">
-          <PromptInput onSend={handleSend} isLoading={isAnalyzing || isLoadingLLM} />
+          {rateLimited ? (
+            <div className="flex items-center justify-center gap-3 bg-red-500/10 border border-red-500/30 rounded-2xl px-6 py-4">
+              <span className="text-2xl">🔒</span>
+              <div>
+                <p className="text-red-400 font-semibold text-sm">Access Temporarily Suspended</p>
+                <p className="text-gray-400 text-xs">
+                  You can try again in{' '}
+                  <span className="text-red-300 font-mono font-bold">
+                    {Math.floor(rateLimitCountdown / 60)}:{String(rateLimitCountdown % 60).padStart(2, '0')}
+                  </span>
+                </p>
+              </div>
+            </div>
+          ) : (
+            <PromptInput onSend={handleSend} isLoading={isAnalyzing || isLoadingLLM} />
+          )}
         </div>
       </div>
     </div>

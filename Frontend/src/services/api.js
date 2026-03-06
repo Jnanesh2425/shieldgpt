@@ -19,3 +19,9 @@ export const getStats = async () => {
   const response = await axios.get(`${API_BASE}/stats`);
   return response.data;
 };
+
+// Fetch rate limit / blocked IPs status
+export const getRateLimitStatus = async () => {
+  const response = await axios.get(`${API_BASE}/rate-limit-status`);
+  return response.data;
+};

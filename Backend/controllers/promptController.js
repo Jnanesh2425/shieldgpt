@@ -1,10 +1,12 @@
 const axios = require('axios');
 const PromptLog = require('../models/promptLog');
 const { generateResponse } = require('../services/ollamaService');
+const { recordViolation, getBlockedIPs, getIPStats } = require('../middleware/rateLimiter');
 
 const handlePrompt = async (req, res) => {
   try {
     const { prompt } = req.body;
+    const clientIP = req.clientIP || req.ip;
 
     if (!prompt || !prompt.trim()) {
       return res.status(400).json({ error: 'Prompt is required' });
@@ -39,21 +41,31 @@ const handlePrompt = async (req, res) => {
       action = 'ALLOWED';
     }
 
-    // Step 3: Generate response based on action
+    // Step 3: Record violation if blocked
+    let rateLimitInfo = null;
+    if (action === 'BLOCKED') {
+      rateLimitInfo = recordViolation(clientIP);
+    }
+
+    // Step 4: Generate response based on action
     let response;
 
     if (action === 'BLOCKED') {
-      response = `🚫 This prompt has been BLOCKED by the AI Firewall.\n\n**Threat Type:** ${label}\n**Risk Score:** ${Math.round(riskScore * 100)}%\n**Confidence:** ${Math.round(confidence * 100)}%\n\nThis request was identified as potentially harmful and was NOT forwarded to the LLM. The AI Firewall has protected the system.`;
+      const warningMsg = rateLimitInfo && !rateLimitInfo.blocked
+        ? `\n\n⚠️ **Warning:** ${rateLimitInfo.remaining} more violation(s) before your IP gets temporarily blocked.`
+        : rateLimitInfo && rateLimitInfo.blocked
+        ? `\n\n🔒 **Your IP has been blocked for 15 minutes** due to repeated malicious activity.`
+        : '';
+
+      response = `🚫 This prompt has been BLOCKED by the AI Firewall.\n\n**Threat Type:** ${label}\n**Risk Score:** ${Math.round(riskScore * 100)}%\n**Confidence:** ${Math.round(confidence * 100)}%\n\nThis request was identified as potentially harmful and was NOT forwarded to the LLM.${warningMsg}`;
     } else if (action === 'SANITIZED') {
-      // For sanitized, we still get a response but note it was sanitized
       response = await generateResponse(prompt);
       response = `⚠️ *[This prompt was sanitized before processing]*\n\n${response}`;
     } else {
-      // ALLOWED — Get actual response from LLM
       response = await generateResponse(prompt);
     }
 
-    // Step 4: Save to database
+    // Step 5: Save to database
     const promptDoc = await PromptLog.create({
       prompt,
       label,
@@ -65,7 +77,7 @@ const handlePrompt = async (req, res) => {
 
     console.log(`🛡️ [${action}] "${prompt.substring(0, 50)}..." → ${label} (risk: ${Math.round(riskScore * 100)}%, conf: ${Math.round(confidence * 100)}%)`);
 
-    // Step 5: Send response
+    // Step 6: Send response
     res.json({
       prompt,
       label,
@@ -73,6 +85,7 @@ const handlePrompt = async (req, res) => {
       riskScore,
       action,
       response,
+      rateLimitInfo,
       createdAt: promptDoc.createdAt,
     });
 
@@ -115,4 +128,16 @@ const getStats = async (req, res) => {
   }
 };
 
-module.exports = { handlePrompt, getLogs, getStats };
+// NEW: Get blocked IPs for dashboard
+const getRateLimitStatus = (req, res) => {
+  try {
+    const blockedIPs = getBlockedIPs();
+    const ipStats = getIPStats();
+    res.json({ blockedIPs, ipStats });
+  } catch (error) {
+    console.error('❌ getRateLimitStatus error:', error.message);
+    res.status(500).json({ error: 'Failed to fetch rate limit status' });
+  }
+};
+
+module.exports = { handlePrompt, getLogs, getStats, getRateLimitStatus };
