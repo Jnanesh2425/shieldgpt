@@ -51,11 +51,11 @@ const SecurityAnalysis = ({ isAnalyzing, result, onComplete }) => {
         frame = requestAnimationFrame(animate);
       } else if (hasResult && !resultShownRef.current) {
         resultShownRef.current = true;
-        // Show result briefly then notify parent
+        // Show result with enough time to read the verdict
         setPhase('result');
         setTimeout(() => {
           if (onComplete) onComplete();
-        }, 800);
+        }, 2500);
       }
     };
 
@@ -73,7 +73,7 @@ const SecurityAnalysis = ({ isAnalyzing, result, onComplete }) => {
         setPhase('result');
         setTimeout(() => {
           if (onComplete) onComplete();
-        }, 800);
+        }, 2500);
       }, 300);
     }
   }, [result]);

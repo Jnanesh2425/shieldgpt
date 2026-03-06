@@ -168,8 +168,8 @@ const ChatPage = () => {
                 </div>
               </motion.div>
 
-              {/* LLM Response (collapsed for history) */}
-              {entry.response && (
+              {/* LLM Response (only for past conversations, not the latest when LLMResponse is active) */}
+              {entry.response && !(showLLMResponse && entry.id === conversations[conversations.length - 1]?.id) && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
