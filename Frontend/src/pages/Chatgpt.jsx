@@ -61,10 +61,10 @@ const ChatPage = () => {
       setIsLoadingLLM(true);
       setShowLLMResponse(true);
 
-      // Simulate a small delay before showing the response (it's already fetched)
+      // Short delay — response is already fetched
       setTimeout(() => {
         setIsLoadingLLM(false);
-      }, 1500);
+      }, 600);
     } else {
       // Blocked — show blocked LLM response
       setShowLLMResponse(true);
