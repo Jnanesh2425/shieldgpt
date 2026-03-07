@@ -1,5 +1,7 @@
 from transformers import pipeline
 import re
+import base64
+import urllib.parse
 
 _classifier = None
 
@@ -16,10 +18,134 @@ def get_classifier():
     return _classifier
 
 
+def try_decode_encoded(text):
+    """
+    Detects and decodes encoded prompts (base64, hex, URL encoding).
+    Returns decoded text if encoding is detected, None otherwise.
+    """
+    clean = text.strip()
+    no_spaces = re.sub(r'\s+', '', clean)
+
+    print(f"   [ENCODE-CHECK] Input length={len(clean)}, no_spaces length={len(no_spaces)}")
+
+    # --- Base64 Detection ---
+    # Use character-ratio approach instead of strict regex
+    if len(no_spaces) >= 16:
+        base64_chars = sum(1 for c in no_spaces if c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=')
+        ratio = base64_chars / len(no_spaces)
+        print(f"   [ENCODE-CHECK] Base64 char ratio: {ratio:.2f} ({base64_chars}/{len(no_spaces)})")
+
+        if ratio >= 0.9:
+            try:
+                # Add padding if missing
+                padded = no_spaces + '=' * (4 - len(no_spaces) % 4) if len(no_spaces) % 4 != 0 else no_spaces
+                decoded = base64.b64decode(padded).decode('utf-8', errors='ignore')
+                readable_chars = sum(1 for c in decoded if c.isprintable() or c.isspace())
+                print(f"   [ENCODE-CHECK] Base64 decoded: '{decoded[:60]}' (readable: {readable_chars}/{len(decoded)})")
+                if len(decoded) > 3 and readable_chars / len(decoded) > 0.7:
+                    print(f"   ✅ BASE64 DECODED: '{decoded[:80]}'")
+                    return decoded.strip()
+            except Exception as e:
+                print(f"   ❌ Base64 decode failed: {e}")
+
+    # --- Hex Detection ---
+    hex_pattern = re.compile(r'^[0-9a-fA-F]{20,}$')
+    if hex_pattern.match(no_spaces) and len(no_spaces) % 2 == 0:
+        try:
+            decoded = bytes.fromhex(no_spaces).decode('utf-8', errors='ignore')
+            readable_chars = sum(1 for c in decoded if c.isprintable() or c.isspace())
+            if len(decoded) > 3 and readable_chars / len(decoded) > 0.7:
+                print(f"   ✅ HEX DECODED: '{decoded[:80]}'")
+                return decoded.strip()
+        except Exception:
+            pass
+
+    # --- URL Encoding Detection ---
+    if '%' in clean and re.search(r'%[0-9a-fA-F]{2}', clean):
+        try:
+            decoded = urllib.parse.unquote(clean)
+            if decoded != clean and len(decoded) > 3:
+                print(f"   ✅ URL DECODED: '{decoded[:80]}'")
+                return decoded.strip()
+        except Exception:
+            pass
+
+    # --- Mixed encoding: extract base64 chunks from longer text ---
+    base64_chunks = re.findall(r'[A-Za-z0-9+/]{16,}[=]{0,2}', clean)
+    for chunk in base64_chunks:
+        if len(chunk) >= 16:
+            try:
+                padded = chunk + '=' * (4 - len(chunk) % 4) if len(chunk) % 4 != 0 else chunk
+                decoded = base64.b64decode(padded).decode('utf-8', errors='ignore')
+                readable_chars = sum(1 for c in decoded if c.isprintable() or c.isspace())
+                if len(decoded) > 5 and readable_chars / len(decoded) > 0.7:
+                    print(f"   ✅ CHUNK BASE64 DECODED: '{decoded[:80]}'")
+                    return decoded.strip()
+            except Exception:
+                pass
+
+    print(f"   [ENCODE-CHECK] No encoding detected")
+    return None
+
+
+def classify_decoded_prompt(decoded_text):
+    """
+    Classify a decoded prompt. If it contains anything suspicious,
+    flag it as PROMPT_INJECTION (encoding = evasion attempt).
+    """
+    decoded_lower = decoded_text.lower().strip()
+
+    danger_words = [
+        "hack", "bomb", "kill", "steal", "attack", "exploit", "inject",
+        "ignore", "bypass", "override", "forget", "reveal", "system",
+        "prompt", "instructions", "jailbreak", "dan", "unrestricted",
+        "weapon", "drug", "poison", "malware", "virus", "password",
+        "murder", "kidnap", "torture", "suicide", "abuse", "terrorist",
+        "explosive", "gun", "knife", "shoot", "destroy", "leak",
+        "dump", "expose", "pretend", "disable", "unlock", "restrict",
+    ]
+
+    has_danger = any(word in decoded_lower for word in danger_words)
+
+    if has_danger:
+        print(f"   🚨 Decoded content contains dangerous keywords!")
+        return {
+            "label": "JAILBREAK",
+            "confidence": 0.97,
+            "all_scores": {"JAILBREAK": 0.97, "PROMPT_INJECTION": 0.02, "SAFE": 0.01}
+        }
+
+    # ANY encoded prompt = evasion attempt → BLOCK it
+    print(f"   🚨 Encoded prompt detected — blocking as evasion attempt")
+    return {
+        "label": "JAILBREAK",
+        "confidence": 0.95,
+        "all_scores": {"JAILBREAK": 0.95, "PROMPT_INJECTION": 0.03, "SAFE": 0.02}
+    }
+
+
 def classify_prompt(prompt):
     prompt_lower = prompt.lower().strip()
     prompt_clean = re.sub(r'\s+', ' ', prompt_lower)
     word_count = len(prompt_clean.split())
+
+    print(f"\n{'='*60}")
+    print(f"🔍 Analyzing prompt: '{prompt[:80]}' (length: {len(prompt)})")
+    print(f"{'='*60}")
+
+    # ============================================
+    # STEP 0: ENCODING DETECTION — Base64, Hex, URL encoding
+    # Attackers encode malicious prompts to bypass text detection
+    # ============================================
+    decoded_text = try_decode_encoded(prompt.strip())
+    if decoded_text:
+        print(f"   🔓 ENCODED PROMPT DETECTED!")
+        print(f"   📝 Original: {prompt[:80]}...")
+        print(f"   🔍 Decoded:  {decoded_text[:80]}...")
+        # Classify the DECODED content instead
+        decoded_result = classify_decoded_prompt(decoded_text)
+        if decoded_result:
+            return decoded_result
 
     # ============================================
     # STEP 1: SAFE — Greetings & casual conversation
