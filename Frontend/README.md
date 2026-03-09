@@ -1,16 +1,76 @@
-# React + Vite
+# 🛡️ AI Firewall for LLMs
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+AI Firewall is a lightweight **security gateway for Large Language Models (LLMs)** that detects and blocks **prompt injection, jailbreak attempts, and encoded prompt attacks** before they reach the AI model.
 
-Currently, two official plugins are available:
+It acts as a **protective layer between users and the LLM**, ensuring safer AI interactions.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+---
 
-## React Compiler
+## 🚨 Problem
 
-The React Compiler is currently not compatible with SWC. See [this issue](https://github.com/vitejs/vite-plugin-react/issues/428) for tracking the progress.
+Modern LLM applications are vulnerable to prompt-based attacks such as:
 
-## Expanding the ESLint configuration
+- Jailbreak attacks (bypassing AI safety rules)
+- Prompt injection (manipulating system instructions)
+- Encoded prompts (Base64/Hex hidden instructions)
+- Repeated brute-force prompt attempts
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Most AI systems send prompts **directly to the LLM without security filtering**, which can lead to misuse.
+
+---
+
+## 💡 Solution
+
+Our system introduces an **AI Firewall** that analyzes prompts before they reach the language model.
+
+Workflow:
+
+User Prompt → AI Firewall Detection → Risk Analysis → Decision → LLM Response
+
+Possible outcomes:
+
+User Prompt → Detection → **Blocked** (if malicious)
+
+User Prompt → Detection → **Sanitized** (if partially unsafe)
+
+User Prompt → Detection → **Allowed** → Forwarded to LLM
+
+---
+
+## ⚙️ Tech Stack
+
+Frontend → React  
+Backend → Node.js + Express  
+Database → MongoDB  
+AI Model → DistilBERT (Hugging Face)  
+Detection Service → Python + Flask  
+LLM Runtime → Ollama (Llama3)
+
+---
+
+## 🔐 Key Features
+
+- AI-based prompt classification (SAFE / JAILBREAK / PROMPT_INJECTION)
+- Prompt injection detection
+- Jailbreak attack detection
+- Encoded prompt detection (Base64 / Hex)
+- Prompt sanitization for borderline prompts
+- Rate limiting to prevent repeated attacks
+- Security monitoring dashboard
+
+---
+
+## 📁 Project Structure
+
+ai-firewall  
+│  
+├── Backend → API gateway and security logic  
+├── Frontend → Chat interface and dashboard  
+├── ai-detector → AI detection service  
+└── README.md  
+
+---
+
+## 📄 License
+
+MIT License
