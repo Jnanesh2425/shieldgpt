@@ -1,8 +1,8 @@
-# 🛡️ AI Firewall - LLM Security Gateway
+# AI Firewall - LLM Security Gateway
 
 A comprehensive security solution designed to protect Large Language Model (LLM) applications from malicious prompts, injection attacks, and suspicious input patterns. AI Firewall provides real-time threat detection, risk analysis, and detailed security monitoring.
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Features](#features)
 - [Technology Stack](#technology-stack)
@@ -17,20 +17,20 @@ A comprehensive security solution designed to protect Large Language Model (LLM)
 - [Contributing](#contributing)
 - [License](#license)
 
-## ✨ Features
+## Features
 
-- **🤖 Advanced Threat Detection**: Uses DistilBERT for zero-shot classification to identify malicious prompts
-- **📊 Real-time Dashboard**: Comprehensive security analytics and threat monitoring
-- **⚡ Rate Limiting**: Prevent abuse with configurable rate limiting per IP
-- **🔐 Prompt Sanitization**: Automatic input cleaning and sanitization
-- **📝 Attack Logging**: Detailed logging of suspicious activities and blocked requests
-- **🎯 Risk Scoring**: Quantified risk assessment for each prompt
-- **💬 Interactive Chat**: Test and validate prompts against the security system
-- **📈 Statistics & Analytics**: Real-time statistics on detected threats and system performance
-- **🔄 Fallback Intelligence**: Smart knowledge base when external services are unavailable
-- **🌐 CORS Enabled**: Ready for cross-origin requests
+- **Advanced Threat Detection**: Uses DistilBERT for zero-shot classification to identify malicious prompts
+- **Real-time Dashboard**: Comprehensive security analytics and threat monitoring
+- **Rate Limiting**: Prevent abuse with configurable rate limiting per IP
+- **Prompt Sanitization**: Automatic input cleaning and sanitization
+- **Attack Logging**: Detailed logging of suspicious activities and blocked requests
+- **Risk Scoring**: Quantified risk assessment for each prompt
+- **Interactive Chat**: Test and validate prompts against the security system
+- **Statistics & Analytics**: Real-time statistics on detected threats and system performance
+- **Fallback Intelligence**: Smart knowledge base when external services are unavailable
+- **CORS Enabled**: Ready for cross-origin requests
 
-## 🛠️ Technology Stack
+## Technology Stack
 
 ### Frontend
 - **React 19** - UI framework
@@ -57,7 +57,7 @@ A comprehensive security solution designed to protect Large Language Model (LLM)
 - **Transformers (Hugging Face)** - NLP library
 - **PyTorch** - Deep learning framework
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 shield-gpt/
@@ -115,7 +115,7 @@ shield-gpt/
     └── public/                # Static assets
 ```
 
-## 📋 Prerequisites
+## Prerequisites
 
 Before running the application, ensure you have installed:
 
@@ -124,7 +124,7 @@ Before running the application, ensure you have installed:
 - **MongoDB** ([Local installation](https://docs.mongodb.com/manual/installation/) or [MongoDB Atlas](https://www.mongodb.com/cloud/atlas))
 - **npm** or **yarn** for package management
 
-## 📦 Installation
+## Installation
 
 ### 1. Clone the Repository
 
@@ -157,7 +157,7 @@ pip install -r requirements.txt
 cd ..
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 ### Backend Configuration
 
@@ -198,7 +198,7 @@ const API_BASE_URL = process.env.VITE_API_URL || 'http://localhost:5000/api';
 
 No additional configuration needed. The service runs on port 5001 by default.
 
-## 🚀 Running the Application
+## Running the Application
 
 ### Option 1: Run All Services Simultaneously (Recommended)
 
@@ -248,7 +248,7 @@ npm start
 
 The backend will serve the built frontend at `http://localhost:5000`.
 
-## 📡 API Documentation
+## API Documentation
 
 ### POST `/api/prompt`
 
@@ -321,7 +321,7 @@ Get rate limiting and blocked IPs information.
 }
 ```
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -351,7 +351,7 @@ Get rate limiting and blocked IPs information.
 └─────────────────────┘      └────────────────────┘
 ```
 
-## 🔒 Security Features
+## Security Features
 
 1. **Malicious Prompt Detection**: DistilBERT zero-shot classification identifies harmful patterns
 2. **Rate Limiting**: IP-based rate limiting prevents brute force attacks
@@ -361,7 +361,7 @@ Get rate limiting and blocked IPs information.
 6. **Error Handling**: Graceful fallbacks and error recovery
 7. **Environment Isolation**: Sensitive configs via environment variables
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Detection Service Connection Error
 ```
